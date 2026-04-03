@@ -55,24 +55,63 @@ def find_event_pages(team):
         logging.warning(f"livetv main page error: {e}")
     return pages
 
+CDN_URL_RE = re.compile(
+    r'(https?://[^\s\'"<>]+(?:webplayer|player|stream|embed|live|cdn)[^\s\'"<>]*)',
+    re.IGNORECASE
+)
+
 def scrape_event_page(title, url):
     """Extract browser and acestream links from an eventinfo page."""
     links = []
+    seen = set()
     try:
         r = get(url)
         soup = BeautifulSoup(r.text, "html.parser")
+
+        # 1. <a href> tags
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             label = a.get_text(strip=True) or "Stream"
-            if not href or href == "#":
+            if not href or href == "#" or href in seen:
                 continue
-            if "acestream://" in href or re.match(r'^[a-f0-9]{40}$', href):
+            seen.add(href)
+            if "acestream://" in href:
                 links.append((label, href))
-            elif href.startswith("http") and any(x in href for x in ["player", "stream", "live", "cdn", "embed", "watch"]):
+            elif re.match(r'^[a-f0-9]{40}$', href):
+                links.append((label, "acestream://" + href))
+            elif href.startswith("http") and any(x in href.lower() for x in ["player", "stream", "live", "cdn", "embed", "watch"]):
                 links.append((label, href))
-        # also scan raw text for acestream hashes
+
+        # 2. <iframe src> — browser streams often here
+        for iframe in soup.find_all("iframe", src=True):
+            src = iframe["src"].strip()
+            if not src or src in seen:
+                continue
+            seen.add(src)
+            if src.startswith("http"):
+                links.append(("Player", src))
+
+        # 3. CDN/webplayer URLs in raw page text (JS variables, data attributes)
+        for m in CDN_URL_RE.finditer(r.text):
+            u = m.group(1).rstrip("',;\"\\")
+            if u not in seen:
+                seen.add(u)
+                links.append(("Stream", u))
+
+        # 4. acestream:// in raw text
         for m in re.finditer(r'acestream://([a-f0-9]{40})', r.text):
-            links.append(("Ace Stream", "acestream://" + m.group(1)))
+            ace_url = "acestream://" + m.group(1)
+            if ace_url not in seen:
+                seen.add(ace_url)
+                links.append(("Ace Stream", ace_url))
+
+        # 5. Bare hex hashes in JS (e.g. var hash = "abc123...")
+        for m in re.finditer(r'["\']([a-f0-9]{40})["\']', r.text):
+            ace_url = "acestream://" + m.group(1)
+            if ace_url not in seen:
+                seen.add(ace_url)
+                links.append(("Ace Stream", ace_url))
+
     except Exception as e:
         logging.warning(f"event page error {url}: {e}")
     return links
