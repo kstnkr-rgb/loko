@@ -55,10 +55,29 @@ def find_event_pages(team):
         logging.warning(f"livetv main page error: {e}")
     return pages
 
-CDN_URL_RE = re.compile(
-    r'(https?://[^\s\'"<>]+(?:webplayer|player|stream|embed|live|cdn)[^\s\'"<>]*)',
+STATIC_EXT_RE = re.compile(
+    r'\.(gif|png|jpg|jpeg|ico|svg|webp|css|js|woff|woff2|ttf|eot)(\?|$)',
     re.IGNORECASE
 )
+SKIP_DOMAINS = {"adobe.com", "get.adobe.com", "google.com", "facebook.com", "twitter.com"}
+# Webplayer URLs: dynamic endpoints (contain query string or .php/.m3u8/.ts path)
+PLAYER_URL_RE = re.compile(
+    r'(https?://[^\s\'"<>]+(?:webplayer|player\.php|embed\.php|stream\.php|/play/|/embed/|\.m3u8)[^\s\'"<>]*)',
+    re.IGNORECASE
+)
+
+def is_stream_url(url):
+    """True if URL looks like a video stream, not a static file or bare domain."""
+    if STATIC_EXT_RE.search(url):
+        return False
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if any(parsed.netloc.endswith(d) for d in SKIP_DOMAINS):
+        return False
+    # Must have a real path or query string (not just "/")
+    has_path = parsed.path not in ("", "/")
+    has_query = bool(parsed.query)
+    return has_path or has_query
 
 def scrape_event_page(title, url):
     """Extract browser and acestream links from an eventinfo page."""
@@ -79,7 +98,9 @@ def scrape_event_page(title, url):
                 links.append((label, href))
             elif re.match(r'^[a-f0-9]{40}$', href):
                 links.append((label, "acestream://" + href))
-            elif href.startswith("http") and any(x in href.lower() for x in ["player", "stream", "live", "cdn", "embed", "watch"]):
+            elif href.startswith("http") and is_stream_url(href) and any(
+                x in href.lower() for x in ["player", "stream", "embed", "watch", "webplayer"]
+            ):
                 links.append((label, href))
 
         # 2. <iframe src> — browser streams often here
@@ -88,13 +109,13 @@ def scrape_event_page(title, url):
             if not src or src in seen:
                 continue
             seen.add(src)
-            if src.startswith("http"):
+            if src.startswith("http") and is_stream_url(src):
                 links.append(("Player", src))
 
-        # 3. CDN/webplayer URLs in raw page text (JS variables, data attributes)
-        for m in CDN_URL_RE.finditer(r.text):
+        # 3. Webplayer/player URLs in raw page text (JS variables, data attributes)
+        for m in PLAYER_URL_RE.finditer(r.text):
             u = m.group(1).rstrip("',;\"\\")
-            if u not in seen:
+            if u not in seen and is_stream_url(u):
                 seen.add(u)
                 links.append(("Stream", u))
 
