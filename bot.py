@@ -1,7 +1,7 @@
 import os, re, logging, asyncio
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 logging.basicConfig(level=logging.INFO)
@@ -199,10 +199,7 @@ def search_streams(team):
 
 def format_response(team, browser, ace):
     if not browser and not ace:
-        return (
-            f"❌ Трансляции для <b>{team}</b> не найдены.\n\nПопробуйте в день матча или другое написание.",
-            None
-        )
+        return f"❌ Трансляции для <b>{team}</b> не найдены.\n\nПопробуйте в день матча или другое написание."
 
     lines = [f"📺 <b>{team}</b> — трансляции\n"]
 
@@ -212,17 +209,12 @@ def format_response(team, browser, ace):
             lines.append(f'• <a href="{url}">{label}</a> — <i>{source}</i>')
         lines.append("")
 
-    keyboard = None
     if ace:
-        lines.append("⚡ <b>Ace Stream:</b>")
-        buttons = []
-        for i, (title, label, hash_, source) in enumerate(ace[:8], 1):
-            ace_url = f"acestream://{hash_}"
-            lines.append(f"• <code>{ace_url}</code> — <i>{source}</i>")
-            buttons.append([InlineKeyboardButton(f"▶️ Ace Stream {i}", url=ace_url)])
-        keyboard = InlineKeyboardMarkup(buttons)
+        lines.append("⚡ <b>Ace Stream</b> (скопируй хэш и вставь в плеер):")
+        for title, label, hash_, source in ace[:8]:
+            lines.append(f"• <code>acestream://{hash_}</code> — <i>{source}</i>")
 
-    return "\n".join(lines), keyboard
+    return "\n".join(lines)
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -246,8 +238,8 @@ async def do_search(update: Update, team: str):
     msg = await update.message.reply_text(f"🔍 Ищу трансляции для <b>{team}</b>...", parse_mode="HTML")
     loop = asyncio.get_event_loop()
     browser, ace = await loop.run_in_executor(None, search_streams, team)
-    text, keyboard = format_response(team, browser, ace)
-    await msg.edit_text(text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=keyboard)
+    text = format_response(team, browser, ace)
+    await msg.edit_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
