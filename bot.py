@@ -150,39 +150,47 @@ def scrape_pimpletv(team):
     try:
         r = requests.get(PIMPLE_BASE, params={"s": team}, headers=HEADERS, timeout=10, verify=False)
         soup = BeautifulSoup(r.text, "html.parser")
-        team_lower = team.lower()
 
-        # Find links to match pages that mention the team
+        ace_links = []
+        seen = set()
+
+        # Collect acestream links directly from search page
+        for a in soup.find_all("a", href=True):
+            href = a["href"].strip()
+            if href.startswith("acestream://"):
+                if href not in seen:
+                    seen.add(href)
+                    ace_links.append(("Ace Stream", href))
+
+        for m in re.finditer(r'acestream://([a-f0-9]{40})', r.text):
+            h = "acestream://" + m.group(1)
+            if h not in seen:
+                seen.add(h)
+                ace_links.append(("Ace Stream", h))
+
+        # Also follow match page links (/football/ or /hockey/ with numeric id)
+        match_page_re = re.compile(r'^/(?:football|hockey)/\d+-.+/$')
         seen_pages = set()
         for a in soup.find_all("a", href=True):
             href = a["href"]
-            title = a.get_text(strip=True)
-            # normalize relative URLs
-            if href.startswith("/"):
-                href = PIMPLE_BASE + href
-            if not href.startswith(PIMPLE_BASE):
+            if not match_page_re.match(href):
                 continue
-            # skip category/tag/page links
-            if any(x in href for x in ["/category/", "/tag/", "/?", "/page/"]):
+            full = PIMPLE_BASE + href
+            if full in seen_pages:
                 continue
-            if team_lower not in title.lower() and team_lower not in href.lower():
-                continue
-            if href in seen_pages:
-                continue
-            seen_pages.add(href)
-
-            # Scrape the match page for acestream links
+            seen_pages.add(full)
             try:
-                pr = requests.get(href, headers=HEADERS, timeout=10, verify=False)
-                ace_links = []
+                pr = requests.get(full, headers=HEADERS, timeout=10, verify=False)
                 for m in re.finditer(r'acestream://([a-f0-9]{40})', pr.text):
-                    ace_links.append(("Ace Stream", "acestream://" + m.group(1)))
-                for m in re.finditer(r'["\']([a-f0-9]{40})["\']', pr.text):
-                    ace_links.append(("Ace Stream", "acestream://" + m.group(1)))
-                if ace_links:
-                    results.append({"title": title or href, "links": ace_links, "source": "pimpletv.ru"})
+                    h = "acestream://" + m.group(1)
+                    if h not in seen:
+                        seen.add(h)
+                        ace_links.append(("Ace Stream", h))
             except Exception as e:
-                logging.warning(f"pimpletv match page error {href}: {e}")
+                logging.warning(f"pimpletv match page error {full}: {e}")
+
+        if ace_links:
+            results.append({"title": team, "links": ace_links, "source": "pimpletv.ru"})
     except Exception as e:
         logging.warning(f"pimpletv error: {e}")
     return results
