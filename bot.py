@@ -87,9 +87,15 @@ def scrape_event_page(title, url):
         r = get(url)
         soup = BeautifulSoup(r.text, "html.parser")
 
+        def normalize(u):
+            """Convert protocol-relative //... URLs to https://..."""
+            if u.startswith("//"):
+                return "https:" + u
+            return u
+
         # 1. <a href> tags
         for a in soup.find_all("a", href=True):
-            href = a["href"].strip()
+            href = normalize(a["href"].strip())
             label = a.get_text(strip=True) or "Stream"
             if not href or href == "#" or href in seen:
                 continue
@@ -105,7 +111,7 @@ def scrape_event_page(title, url):
 
         # 2. <iframe src> — browser streams often here
         for iframe in soup.find_all("iframe", src=True):
-            src = iframe["src"].strip()
+            src = normalize(iframe["src"].strip())
             if not src or src in seen:
                 continue
             seen.add(src)
@@ -207,7 +213,7 @@ def format_response(team, browser, ace):
         lines.append("⚡ <b>Ace Stream:</b>")
         for title, label, hash_, source in ace[:8]:
             ace_url = f"acestream://{hash_}"
-            lines.append(f'• <a href="{ace_url}">{label}</a>\n  <code>{hash_[:20]}…</code> — <i>{source}</i>')
+            lines.append(f'• <a href="{ace_url}">{ace_url}</a> — <i>{source}</i>')
 
     return "\n".join(lines)
 
