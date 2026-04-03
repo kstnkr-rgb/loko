@@ -1,5 +1,7 @@
 import os, re, logging, asyncio
 import requests
+import urllib3
+urllib3.disable_warnings()
 from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -31,7 +33,7 @@ def extract_streams(links):
 def scrape_livetv(team):
     results = []
     try:
-        r = requests.get("https://livetv.sx/dex/", headers=HEADERS, timeout=10)
+        r = requests.get("https://livetv.sx/dex/", headers=HEADERS, timeout=10, verify=False)
         soup = BeautifulSoup(r.text, "html.parser")
         team_lower = team.lower()
 
