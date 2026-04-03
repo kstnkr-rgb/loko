@@ -143,6 +143,50 @@ def scrape_event_page(title, url):
         logging.warning(f"event page error {url}: {e}")
     return links
 
+PIMPLE_BASE = "https://www.pimpletv.ru"
+
+def scrape_pimpletv(team):
+    results = []
+    try:
+        r = requests.get(PIMPLE_BASE, params={"s": team}, headers=HEADERS, timeout=10, verify=False)
+        soup = BeautifulSoup(r.text, "html.parser")
+        team_lower = team.lower()
+
+        # Find links to match pages that mention the team
+        seen_pages = set()
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            title = a.get_text(strip=True)
+            # normalize relative URLs
+            if href.startswith("/"):
+                href = PIMPLE_BASE + href
+            if not href.startswith(PIMPLE_BASE):
+                continue
+            # skip category/tag/page links
+            if any(x in href for x in ["/category/", "/tag/", "/?", "/page/"]):
+                continue
+            if team_lower not in title.lower() and team_lower not in href.lower():
+                continue
+            if href in seen_pages:
+                continue
+            seen_pages.add(href)
+
+            # Scrape the match page for acestream links
+            try:
+                pr = requests.get(href, headers=HEADERS, timeout=10, verify=False)
+                ace_links = []
+                for m in re.finditer(r'acestream://([a-f0-9]{40})', pr.text):
+                    ace_links.append(("Ace Stream", "acestream://" + m.group(1)))
+                for m in re.finditer(r'["\']([a-f0-9]{40})["\']', pr.text):
+                    ace_links.append(("Ace Stream", "acestream://" + m.group(1)))
+                if ace_links:
+                    results.append({"title": title or href, "links": ace_links, "source": "pimpletv.ru"})
+            except Exception as e:
+                logging.warning(f"pimpletv match page error {href}: {e}")
+    except Exception as e:
+        logging.warning(f"pimpletv error: {e}")
+    return results
+
 def scrape_rplnews(team):
     results = []
     try:
@@ -182,6 +226,18 @@ def search_streams(team):
                 ace_all.append((title, label, hash_, "livetv.sx"))
             else:
                 browser_all.append((title, label, href, "livetv.sx"))
+
+    # pimpletv.ru
+    for match in scrape_pimpletv(team):
+        b, a = extract_streams(match["links"])
+        for item in b:
+            if item[1] not in seen:
+                seen.add(item[1])
+                browser_all.append((match["title"], item[0], item[1], match["source"]))
+        for item in a:
+            if item[1] not in seen:
+                seen.add(item[1])
+                ace_all.append((match["title"], item[0], item[1], match["source"]))
 
     # rplnews.online
     for match in scrape_rplnews(team):
