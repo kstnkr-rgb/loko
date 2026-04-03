@@ -1,7 +1,5 @@
 import os, re, logging, asyncio
 import requests
-import urllib3
-urllib3.disable_warnings()
 from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -30,29 +28,54 @@ def extract_streams(links):
             browser.append((text or "Смотреть", url))
     return browser, ace
 
-def scrape_livetv(team):
-    results = []
+import urllib3
+urllib3.disable_warnings()
+
+BASE = "https://livetv.sx"
+
+def get(url):
+    return requests.get(url, headers=HEADERS, timeout=10, verify=False)
+
+def find_event_pages(team):
+    """Find eventinfo URLs on main page matching team name."""
+    pages = []
     try:
-        r = requests.get("https://livetv.sx/dex/", headers=HEADERS, timeout=10, verify=False)
+        r = get(f"{BASE}/dex/")
         soup = BeautifulSoup(r.text, "html.parser")
         team_lower = team.lower()
-
-        for row in soup.find_all(["tr", "div", "li"]):
-            text = row.get_text(" ", strip=True).lower()
-            if team_lower not in text:
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "/eventinfo/" not in href:
                 continue
-            links = []
-            for a in row.find_all("a", href=True):
-                href = a["href"]
-                if href.startswith("/"):
-                    href = "https://livetv.sx" + href
-                links.append((a.get_text(strip=True), href))
-            if links:
-                title = row.get_text(" ", strip=True)[:80]
-                results.append({"title": title, "links": links, "source": "livetv.sx"})
+            title = a.get_text(strip=True)
+            if team_lower in title.lower():
+                full = href if href.startswith("http") else BASE + href
+                pages.append((title, full))
     except Exception as e:
-        logging.warning(f"livetv error: {e}")
-    return results
+        logging.warning(f"livetv main page error: {e}")
+    return pages
+
+def scrape_event_page(title, url):
+    """Extract browser and acestream links from an eventinfo page."""
+    links = []
+    try:
+        r = get(url)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for a in soup.find_all("a", href=True):
+            href = a["href"].strip()
+            label = a.get_text(strip=True) or "Stream"
+            if not href or href == "#":
+                continue
+            if "acestream://" in href or re.match(r'^[a-f0-9]{40}$', href):
+                links.append((label, href))
+            elif href.startswith("http") and any(x in href for x in ["player", "stream", "live", "cdn", "embed", "watch"]):
+                links.append((label, href))
+        # also scan raw text for acestream hashes
+        for m in re.finditer(r'acestream://([a-f0-9]{40})', r.text):
+            links.append(("Ace Stream", "acestream://" + m.group(1)))
+    except Exception as e:
+        logging.warning(f"event page error {url}: {e}")
+    return links
 
 def scrape_rplnews(team):
     results = []
@@ -60,7 +83,6 @@ def scrape_rplnews(team):
         r = requests.get("http://rplnews.online/", headers=HEADERS, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
         team_lower = team.lower()
-
         for row in soup.find_all(["article", "div", "tr", "li"]):
             text = row.get_text(" ", strip=True).lower()
             if team_lower not in text:
@@ -79,11 +101,24 @@ def scrape_rplnews(team):
     return results
 
 def search_streams(team):
-    all_results = scrape_livetv(team) + scrape_rplnews(team)
     browser_all, ace_all = [], []
     seen = set()
 
-    for match in all_results:
+    # livetv.sx: find event pages, then scrape each
+    for title, url in find_event_pages(team):
+        links = scrape_event_page(title, url)
+        for label, href in links:
+            if href in seen:
+                continue
+            seen.add(href)
+            if "acestream://" in href or re.match(r'^[a-f0-9]{40}$', href):
+                hash_ = href.replace("acestream://", "")
+                ace_all.append((title, label, hash_, "livetv.sx"))
+            else:
+                browser_all.append((title, label, href, "livetv.sx"))
+
+    # rplnews.online
+    for match in scrape_rplnews(team):
         b, a = extract_streams(match["links"])
         for item in b:
             if item[1] not in seen:
