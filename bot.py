@@ -197,6 +197,11 @@ def scrape_rplnews(team):
                 href = a["href"]
                 if href.startswith("/"):
                     href = "http://rplnews.online" + href
+                # only include acestream or obvious stream URLs
+                if not (is_acestream(href) or any(x in href.lower() for x in [
+                    "acestream", "stream", "player", "embed", "watch", ".m3u8"
+                ])):
+                    continue
                 links.append((a.get_text(strip=True), href))
             if links:
                 title = row.get_text(" ", strip=True)[:80]
