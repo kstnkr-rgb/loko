@@ -172,6 +172,62 @@ def scrape_sportnet(team):
         logging.warning(f"sportnet error: {e}")
     return ace
 
+# ── myfootball.cc ────────────────────────────────────────────────────────────
+
+MYFOOTBALL_BASE = "https://myfootball.cc"
+
+def scrape_myfootball(team):
+    ace = []
+    try:
+        r = requests.get(MYFOOTBALL_BASE + "/", headers=HEADERS, timeout=10, verify=False)
+        soup = BeautifulSoup(r.text, "html.parser")
+        team_lower = team.lower()
+
+        match_urls = []
+        seen_urls = set()
+
+        # List items: div.rewievs_tab1 > a
+        for a in soup.find_all("a", href=True):
+            if not a.find_parent(class_="rewievs_tab1"):
+                continue
+            title = a.get("title", "") + " " + a.get_text(" ", strip=True)
+            if team_lower not in title.lower():
+                continue
+            href = a["href"]
+            if href not in seen_urls:
+                seen_urls.add(href)
+                match_urls.append((title.strip(), href))
+
+        # Featured cards: div.top-match-card[data-link]
+        for card in soup.find_all("div", class_="top-match-card"):
+            href = card.get("data-link", "")
+            if not href or href in seen_urls:
+                continue
+            title = card.get_text(" ", strip=True)
+            if team_lower not in title.lower():
+                continue
+            seen_urls.add(href)
+            match_urls.append((title[:60], href))
+
+        seen_hashes = set()
+        for title, url in match_urls:
+            try:
+                pr = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+                ps = BeautifulSoup(pr.text, "html.parser")
+                for a in ps.find_all("a", href=True):
+                    href = a["href"].strip()
+                    if not href.startswith("acestream://"):
+                        continue
+                    h = href.replace("acestream://", "")
+                    if h not in seen_hashes:
+                        seen_hashes.add(h)
+                        ace.append({"title": title, "hash": h})
+            except Exception as e:
+                logging.warning(f"myfootball match error {url}: {e}")
+    except Exception as e:
+        logging.warning(f"myfootball error: {e}")
+    return ace
+
 # ── rplnews.online ───────────────────────────────────────────────────────────
 
 def scrape_rplnews(team):
@@ -198,10 +254,11 @@ def scrape_rplnews(team):
 # ── search across all sources ─────────────────────────────────────────────────
 
 SOURCES = [
-    ("livetv.sx",     scrape_livetv,    "ace"),
-    ("pimpletv.ru",   scrape_pimpletv,  "ace"),
-    ("sportnet.live", scrape_sportnet,  "ace"),
-    ("rplnews.online", scrape_rplnews,  "browser"),
+    ("livetv.sx",      scrape_livetv,      "ace"),
+    ("pimpletv.ru",    scrape_pimpletv,    "ace"),
+    ("sportnet.live",  scrape_sportnet,    "ace"),
+    ("myfootball.cc",  scrape_myfootball,  "ace"),
+    ("rplnews.online", scrape_rplnews,     "browser"),
 ]
 
 def search_by_source(terms):
