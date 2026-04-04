@@ -1,7 +1,7 @@
 import os, re, logging, asyncio
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 logging.basicConfig(level=logging.INFO)
@@ -361,14 +361,16 @@ LOKO_BUTTON = InlineKeyboardMarkup([[
     InlineKeyboardButton("🔍 Найти Локомотив", callback_data="loko")
 ]])
 
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [[KeyboardButton("Старт"), KeyboardButton("Стримы Локо")]],
+    resize_keyboard=True,
+)
+
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Привет! Я ищу трансляции футбольных матчей.\n\n"
-        "Просто напиши название команды, например:\n"
-        "<b>Локомотив</b>\n\n"
-        "Или нажми кнопку ниже:",
-        parse_mode="HTML",
-        reply_markup=LOKO_BUTTON,
+        "Привет! Этот бот помогает искать трансляции футбольных матчей. "
+        "Нажми «Старт» и бот найдет текущие трансляции Локомотива.",
+        reply_markup=MAIN_KEYBOARD,
     )
 
 async def loko_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -386,7 +388,16 @@ async def find_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     team = update.message.text.strip()
-    if team:
+    if team == "Старт":
+        await update.message.reply_text(
+            "Привет! Этот бот помогает искать трансляции футбольных матчей. "
+            "Нажми «Найти Локомотив» чтобы найти текущие трансляции.",
+            parse_mode="HTML",
+            reply_markup=LOKO_BUTTON,
+        )
+    elif team == "Стримы Локо":
+        await do_search(update, "Локомотив")
+    elif team:
         await do_search(update, team)
 
 async def do_search(update: Update, team: str):
