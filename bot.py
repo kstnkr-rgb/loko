@@ -18,6 +18,31 @@ urllib3.disable_warnings()
 def is_acestream(url):
     return "acestream://" in url or re.match(r'^[a-f0-9]{40}$', url.strip())
 
+# ── transliteration ───────────────────────────────────────────────────────────
+
+RU_TO_LAT = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh',
+    'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
+    'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',
+    'ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu',
+    'я':'ya',
+}
+LAT_TO_RU = {v: k for k, v in RU_TO_LAT.items() if v}
+
+def translit_ru_to_lat(text):
+    result = []
+    for ch in text.lower():
+        result.append(RU_TO_LAT.get(ch, ch))
+    return "".join(result)
+
+def expand_search_terms(term):
+    """Return list of search variants: original + transliterated if different."""
+    terms = [term]
+    lat = translit_ru_to_lat(term)
+    if lat != term.lower() and lat not in [t.lower() for t in terms]:
+        terms.append(lat)
+    return terms
+
 def extract_ace_hashes(text):
     """Find all acestream hashes in raw text."""
     found = []
@@ -262,9 +287,16 @@ SOURCES = [
 ]
 
 def search_by_source(terms):
+    # expand each term with transliterated variants
+    expanded = []
+    for t in terms:
+        for v in expand_search_terms(t):
+            if v not in expanded:
+                expanded.append(v)
+
     result = {name: [] for name, _, _ in SOURCES}
     seen_global = {name: set() for name, _, _ in SOURCES}
-    for team in terms:
+    for team in expanded:
         for name, scraper, kind in SOURCES:
             for item in scraper(team):
                 key = item.get("hash") or item.get("url", "")
@@ -289,8 +321,7 @@ def format_by_source(label, data):
                     if item.get("title"):
                         lines[-1] += f" <i>({item['title'][:40]})</i>"
                 else:
-                    title = item.get("title", "Смотреть")[:50]
-                    lines.append(f'• <a href="{item["url"]}">{title}</a>')
+                    lines.append(f'• <a href="{item["url"]}">Stream</a>')
         lines.append("")
     return "\n".join(lines).strip()
 
