@@ -172,23 +172,47 @@ def scrape_sportnet(team):
         logging.warning(f"sportnet error: {e}")
     return ace
 
+# ── rplnews.online ───────────────────────────────────────────────────────────
+
+def scrape_rplnews(team):
+    browser = []
+    try:
+        r = requests.get("https://rplnews.online/", headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+        team_lower = team.lower()
+        for a in soup.find_all("a", href=True):
+            classes = a.get("class", [])
+            if "imatch" not in classes:
+                continue
+            title = a.get_text(" ", strip=True)
+            if team_lower not in title.lower():
+                continue
+            href = a["href"]
+            if href.startswith("/"):
+                href = "https://rplnews.online" + href
+            browser.append({"title": title, "url": href})
+    except Exception as e:
+        logging.warning(f"rplnews error: {e}")
+    return browser
+
 # ── search across all sources ─────────────────────────────────────────────────
 
 SOURCES = [
-    ("livetv.sx",    scrape_livetv),
-    ("pimpletv.ru",  scrape_pimpletv),
-    ("sportnet.live", scrape_sportnet),
+    ("livetv.sx",     scrape_livetv,    "ace"),
+    ("pimpletv.ru",   scrape_pimpletv,  "ace"),
+    ("sportnet.live", scrape_sportnet,  "ace"),
+    ("rplnews.online", scrape_rplnews,  "browser"),
 ]
 
 def search_by_source(terms):
-    result = {name: [] for name, _ in SOURCES}
-    seen_global = {name: set() for name, _ in SOURCES}
+    result = {name: [] for name, _, _ in SOURCES}
+    seen_global = {name: set() for name, _, _ in SOURCES}
     for team in terms:
-        for name, scraper in SOURCES:
+        for name, scraper, kind in SOURCES:
             for item in scraper(team):
-                h = item["hash"]
-                if h not in seen_global[name]:
-                    seen_global[name].add(h)
+                key = item.get("hash") or item.get("url", "")
+                if key not in seen_global[name]:
+                    seen_global[name].add(key)
                     result[name].append(item)
     return result
 
@@ -196,16 +220,20 @@ def search_by_source(terms):
 
 def format_by_source(label, data):
     lines = [f"📺 <b>{label}</b> — трансляции\n"]
-    for name, _ in SOURCES:
+    for name, _, kind in SOURCES:
         items = data[name]
         lines.append(f"<b>{name}:</b>")
         if not items:
             lines.append("На данном ресурсе трансляция не найдена")
         else:
             for item in items[:6]:
-                lines.append(f"• <code>acestream://{item['hash']}</code>")
-                if item.get("title"):
-                    lines[-1] += f" <i>({item['title'][:40]})</i>"
+                if kind == "ace":
+                    lines.append(f"• <code>acestream://{item['hash']}</code>")
+                    if item.get("title"):
+                        lines[-1] += f" <i>({item['title'][:40]})</i>"
+                else:
+                    title = item.get("title", "Смотреть")[:50]
+                    lines.append(f'• <a href="{item["url"]}">{title}</a>')
         lines.append("")
     return "\n".join(lines).strip()
 
