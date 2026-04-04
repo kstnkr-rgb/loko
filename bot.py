@@ -229,13 +229,17 @@ def scrape_myfootball(team):
     result = {"ace": [], "browser": []}
     try:
         r = requests.get(MYFOOTBALL_BASE + "/", headers=HEADERS, timeout=10, verify=False)
+        logging.info(f"myfootball status={r.status_code} len={len(r.text)} team={team!r}")
         soup = BeautifulSoup(r.text, "html.parser")
         team_lower = team.lower()
+
+        divs = soup.find_all("div", class_="rewievs_tab1")
+        logging.info(f"myfootball divs found: {len(divs)}")
 
         match_urls = []
         seen_urls = set()
 
-        for div in soup.find_all("div", class_="rewievs_tab1"):
+        for div in divs:
             for a in div.find_all("a", href=True):
                 title = a.get("title", "") + " " + a.get_text(" ", strip=True)
                 if team_lower not in title.lower():
@@ -255,9 +259,10 @@ def scrape_myfootball(team):
             seen_urls.add(href)
             match_urls.append((title[:60], href))
 
+        logging.info(f"myfootball matches for {team!r}: {len(match_urls)}")
+
         seen_hashes = set()
         for title, url in match_urls:
-            # add the match page itself as browser link
             result["browser"].append({"title": title, "url": url})
             try:
                 pr = requests.get(url, headers=HEADERS, timeout=10, verify=False)
