@@ -63,8 +63,14 @@ def extract_ace_hashes(text):
 
 LIVETV_BASE = "https://livetv.sx"
 
+STREAM_URL_RE = re.compile(
+    r'(https?://[^\s\'"<>]+(?:webplayer|player\.php|embed\.php|stream\.php|/play/|/embed/|\.m3u8)[^\s\'"<>]*)',
+    re.IGNORECASE
+)
+STATIC_EXT_RE = re.compile(r'\.(gif|png|jpg|jpeg|ico|svg|webp|css|js|woff2?|ttf|eot)(\?|$)', re.IGNORECASE)
+
 def scrape_livetv(team):
-    ace = []
+    result = {"ace": [], "browser": []}
     try:
         r = requests.get(f"{LIVETV_BASE}/enx/allupcomingsports/1/",
                          headers=HEADERS, timeout=10, verify=False)
@@ -81,19 +87,40 @@ def scrape_livetv(team):
                 full = href if href.startswith("http") else LIVETV_BASE + href
                 event_urls.append((title, full))
 
-        seen = set()
+        seen_ace = set()
+        seen_browser = set()
         for title, url in event_urls:
             try:
                 r2 = requests.get(url, headers=HEADERS, timeout=10, verify=False)
+                soup2 = BeautifulSoup(r2.text, "html.parser")
+
+                # acestream
                 for h in extract_ace_hashes(r2.text):
-                    if h not in seen:
-                        seen.add(h)
-                        ace.append({"title": title, "hash": h})
+                    if h not in seen_ace:
+                        seen_ace.add(h)
+                        result["ace"].append({"title": title, "hash": h})
+
+                # browser: iframes
+                for iframe in soup2.find_all("iframe", src=True):
+                    src = iframe["src"].strip()
+                    if src.startswith("//"):
+                        src = "https:" + src
+                    if src.startswith("http") and not STATIC_EXT_RE.search(src) and src not in seen_browser:
+                        seen_browser.add(src)
+                        result["browser"].append({"title": title, "url": src})
+
+                # browser: player URLs in raw text
+                for m in STREAM_URL_RE.finditer(r2.text):
+                    u = m.group(1).rstrip("',;\"\\")
+                    if not STATIC_EXT_RE.search(u) and u not in seen_browser:
+                        seen_browser.add(u)
+                        result["browser"].append({"title": title, "url": u})
+
             except Exception as e:
                 logging.warning(f"livetv event error {url}: {e}")
     except Exception as e:
         logging.warning(f"livetv error: {e}")
-    return ace
+    return result
 
 # ── pimpletv.ru ───────────────────────────────────────────────────────────────
 
@@ -101,7 +128,7 @@ PIMPLE_BASE = "https://www.pimpletv.ru"
 PIMPLE_MATCH_RE = re.compile(r'^/(?:football|hockey)/\d+-.+/$')
 
 def scrape_pimpletv(team):
-    ace = []
+    result = {"ace": [], "browser": []}
     try:
         r = requests.get(f"{PIMPLE_BASE}/category/football/",
                          headers=HEADERS, timeout=10, verify=False)
@@ -123,11 +150,6 @@ def scrape_pimpletv(team):
             seen_pages.add(full)
             try:
                 pr = requests.get(full, headers=HEADERS, timeout=10, verify=False)
-                for h in extract_ace_hashes(pr.text):
-                    if h not in seen_hashes:
-                        seen_hashes.add(h)
-                        ace.append({"title": title, "hash": h})
-                # also grab acestream:// hrefs directly
                 ps = BeautifulSoup(pr.text, "html.parser")
                 for pa in ps.find_all("a", href=True):
                     phref = pa["href"].strip()
@@ -135,12 +157,16 @@ def scrape_pimpletv(team):
                         h = phref.replace("acestream://", "")
                         if h not in seen_hashes:
                             seen_hashes.add(h)
-                            ace.append({"title": title, "hash": h})
+                            result["ace"].append({"title": title, "hash": h})
+                for h in extract_ace_hashes(pr.text):
+                    if h not in seen_hashes:
+                        seen_hashes.add(h)
+                        result["ace"].append({"title": title, "hash": h})
             except Exception as e:
                 logging.warning(f"pimpletv match error {full}: {e}")
     except Exception as e:
         logging.warning(f"pimpletv error: {e}")
-    return ace
+    return result
 
 # ── sportnet.live ─────────────────────────────────────────────────────────────
 
@@ -148,7 +174,7 @@ SPORTNET_BASE = "https://sportnet.live"
 SPORTNET_EVENT_RE = re.compile(r'^/football/event/\d+/')
 
 def scrape_sportnet(team):
-    ace = []
+    result = {"ace": [], "browser": []}
     try:
         r = requests.get(f"{SPORTNET_BASE}/football",
                          headers=HEADERS, timeout=10, verify=False)
@@ -172,7 +198,6 @@ def scrape_sportnet(team):
                 pr = requests.get(full, headers=HEADERS, timeout=10, verify=False)
                 ps = BeautifulSoup(pr.text, "html.parser")
 
-                # Try AJAX: find data-stream attribute
                 el = ps.find(attrs={"data-stream": True})
                 if el:
                     stream_val = el["data-stream"]
@@ -184,25 +209,24 @@ def scrape_sportnet(team):
                     for h in extract_ace_hashes(aj.text):
                         if h not in seen_hashes:
                             seen_hashes.add(h)
-                            ace.append({"title": title, "hash": h})
+                            result["ace"].append({"title": title, "hash": h})
 
-                # Also try raw text
                 for h in extract_ace_hashes(pr.text):
                     if h not in seen_hashes:
                         seen_hashes.add(h)
-                        ace.append({"title": title, "hash": h})
+                        result["ace"].append({"title": title, "hash": h})
             except Exception as e:
                 logging.warning(f"sportnet match error {full}: {e}")
     except Exception as e:
         logging.warning(f"sportnet error: {e}")
-    return ace
+    return result
 
 # ── myfootball.cc ────────────────────────────────────────────────────────────
 
 MYFOOTBALL_BASE = "https://myfootball.cc"
 
 def scrape_myfootball(team):
-    ace = []
+    result = {"ace": [], "browser": []}
     try:
         r = requests.get(MYFOOTBALL_BASE + "/", headers=HEADERS, timeout=10, verify=False)
         soup = BeautifulSoup(r.text, "html.parser")
@@ -211,7 +235,6 @@ def scrape_myfootball(team):
         match_urls = []
         seen_urls = set()
 
-        # List items: div.rewievs_tab1 > a
         for div in soup.find_all("div", class_="rewievs_tab1"):
             for a in div.find_all("a", href=True):
                 title = a.get("title", "") + " " + a.get_text(" ", strip=True)
@@ -222,7 +245,6 @@ def scrape_myfootball(team):
                     seen_urls.add(href)
                     match_urls.append((title.strip(), href))
 
-        # Featured cards: div.top-match-card[data-link]
         for card in soup.find_all("div", class_="top-match-card"):
             href = card.get("data-link", "")
             if not href or href in seen_urls:
@@ -235,6 +257,8 @@ def scrape_myfootball(team):
 
         seen_hashes = set()
         for title, url in match_urls:
+            # add the match page itself as browser link
+            result["browser"].append({"title": title, "url": url})
             try:
                 pr = requests.get(url, headers=HEADERS, timeout=10, verify=False)
                 ps = BeautifulSoup(pr.text, "html.parser")
@@ -245,17 +269,17 @@ def scrape_myfootball(team):
                     h = href.replace("acestream://", "")
                     if h not in seen_hashes:
                         seen_hashes.add(h)
-                        ace.append({"title": title, "hash": h})
+                        result["ace"].append({"title": title, "hash": h})
             except Exception as e:
                 logging.warning(f"myfootball match error {url}: {e}")
     except Exception as e:
         logging.warning(f"myfootball error: {e}")
-    return ace
+    return result
 
 # ── rplnews.online ───────────────────────────────────────────────────────────
 
 def scrape_rplnews(team):
-    browser = []
+    result = {"ace": [], "browser": []}
     try:
         r = requests.get("https://rplnews.online/", headers=HEADERS, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
@@ -270,57 +294,59 @@ def scrape_rplnews(team):
             href = a["href"]
             if href.startswith("/"):
                 href = "https://rplnews.online" + href
-            browser.append({"title": title, "url": href})
+            result["browser"].append({"title": title, "url": href})
     except Exception as e:
         logging.warning(f"rplnews error: {e}")
-    return browser
+    return result
 
 # ── search across all sources ─────────────────────────────────────────────────
 
 SOURCES = [
-    ("livetv.sx",      scrape_livetv,      "ace"),
-    ("pimpletv.ru",    scrape_pimpletv,    "ace"),
-    ("sportnet.live",  scrape_sportnet,    "ace"),
-    ("myfootball.cc",  scrape_myfootball,  "ace"),
-    ("rplnews.online", scrape_rplnews,     "browser"),
+    ("livetv.sx",      scrape_livetv),
+    ("pimpletv.ru",    scrape_pimpletv),
+    ("sportnet.live",  scrape_sportnet),
+    ("myfootball.cc",  scrape_myfootball),
+    ("rplnews.online", scrape_rplnews),
 ]
 
 def search_by_source(terms):
-    # expand each term with transliterated variants
     expanded = []
     for t in terms:
         for v in expand_search_terms(t):
             if v not in expanded:
                 expanded.append(v)
 
-    result = {name: [] for name, _, _ in SOURCES}
-    seen_global = {name: set() for name, _, _ in SOURCES}
+    result = {name: {"ace": [], "browser": [], "seen_ace": set(), "seen_browser": set()} for name, _ in SOURCES}
     for team in expanded:
-        for name, scraper, kind in SOURCES:
-            for item in scraper(team):
-                key = item.get("hash") or item.get("url", "")
-                if key not in seen_global[name]:
-                    seen_global[name].add(key)
-                    result[name].append(item)
+        for name, scraper in SOURCES:
+            s = result[name]
+            scraped = scraper(team)
+            for item in scraped.get("ace", []):
+                if item["hash"] not in s["seen_ace"]:
+                    s["seen_ace"].add(item["hash"])
+                    s["ace"].append(item)
+            for item in scraped.get("browser", []):
+                if item["url"] not in s["seen_browser"]:
+                    s["seen_browser"].add(item["url"])
+                    s["browser"].append(item)
     return result
 
 # ── formatting ────────────────────────────────────────────────────────────────
 
 def format_by_source(label, data):
     lines = [f"📺 <b>{label}</b> — трансляции\n"]
-    for name, _, kind in SOURCES:
-        items = data[name]
+    for name, _ in SOURCES:
+        s = data[name]
         lines.append(f"<b>{name}:</b>")
-        if not items:
+        if not s["ace"] and not s["browser"]:
             lines.append("На данном ресурсе трансляция не найдена")
         else:
-            for item in items[:6]:
-                if kind == "ace":
-                    lines.append(f"• <code>acestream://{item['hash']}</code>")
-                    if item.get("title"):
-                        lines[-1] += f" <i>({item['title'][:40]})</i>"
-                else:
-                    lines.append(f'• <a href="{item["url"]}">Stream</a>')
+            for item in s["ace"][:6]:
+                lines.append(f"• <code>acestream://{item['hash']}</code>")
+                if item.get("title"):
+                    lines[-1] += f" <i>({item['title'][:40]})</i>"
+            for item in s["browser"][:3]:
+                lines.append(f'• <a href="{item["url"]}">Stream</a>')
         lines.append("")
     return "\n".join(lines).strip()
 
