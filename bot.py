@@ -362,15 +362,16 @@ LOKO_BUTTON = InlineKeyboardMarkup([[
 ]])
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[KeyboardButton("Старт"), KeyboardButton("Стримы Локо")]],
+    [[KeyboardButton("Стримы Локо")]],
     resize_keyboard=True,
 )
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Выберите действие:", reply_markup=MAIN_KEYBOARD)
     await update.message.reply_text(
         "Привет! Этот бот помогает искать трансляции футбольных матчей. "
-        "Нажми «Старт» и бот найдет текущие трансляции Локомотива.",
-        reply_markup=MAIN_KEYBOARD,
+        "Нажми кнопку ниже и бот найдет текущие трансляции Локомотива.",
+        reply_markup=LOKO_BUTTON,
     )
 
 async def loko_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -388,14 +389,7 @@ async def find_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     team = update.message.text.strip()
-    if team == "Старт":
-        await update.message.reply_text(
-            "Привет! Этот бот помогает искать трансляции футбольных матчей. "
-            "Нажми «Найти Локомотив» чтобы найти текущие трансляции.",
-            parse_mode="HTML",
-            reply_markup=LOKO_BUTTON,
-        )
-    elif team == "Стримы Локо":
+    if team == "Стримы Локо":
         await do_search(update, "Локомотив")
     elif team:
         await do_search(update, team)
