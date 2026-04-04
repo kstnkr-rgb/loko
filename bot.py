@@ -212,16 +212,15 @@ def scrape_myfootball(team):
         seen_urls = set()
 
         # List items: div.rewievs_tab1 > a
-        for a in soup.find_all("a", href=True):
-            if not a.find_parent(class_="rewievs_tab1"):
-                continue
-            title = a.get("title", "") + " " + a.get_text(" ", strip=True)
-            if team_lower not in title.lower():
-                continue
-            href = a["href"]
-            if href not in seen_urls:
-                seen_urls.add(href)
-                match_urls.append((title.strip(), href))
+        for div in soup.find_all("div", class_="rewievs_tab1"):
+            for a in div.find_all("a", href=True):
+                title = a.get("title", "") + " " + a.get_text(" ", strip=True)
+                if team_lower not in title.lower():
+                    continue
+                href = a["href"]
+                if href not in seen_urls:
+                    seen_urls.add(href)
+                    match_urls.append((title.strip(), href))
 
         # Featured cards: div.top-match-card[data-link]
         for card in soup.find_all("div", class_="top-match-card"):
