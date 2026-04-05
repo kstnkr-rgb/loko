@@ -105,7 +105,9 @@ def scrape_livetv(team):
                     src = iframe["src"].strip()
                     if src.startswith("//"):
                         src = "https:" + src
-                    if src.startswith("http") and not STATIC_EXT_RE.search(src) and src not in seen_browser:
+                    if (src.startswith("http") and not STATIC_EXT_RE.search(src)
+                            and "getbanner" not in src and "//ads." not in src
+                            and src not in seen_browser):
                         seen_browser.add(src)
                         result["browser"].append({"title": title, "url": src})
 
@@ -342,7 +344,8 @@ def format_by_source(label, data):
     lines = [f"📺 <b>{label}</b> — трансляции\n"]
     for name, _ in SOURCES:
         s = data[name]
-        lines.append(f"<b>{name}:</b>")
+        display_name = name.rsplit(".", 1)[0]
+        lines.append(f"<b>{display_name}:</b>")
         if not s["ace"] and not s["browser"]:
             lines.append("На данном ресурсе трансляция не найдена")
         else:
@@ -370,7 +373,9 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Выберите действие:", reply_markup=MAIN_KEYBOARD)
     await update.message.reply_text(
         "Привет! Этот бот помогает искать трансляции футбольных матчей. "
-        "Нажми кнопку ниже и бот найдет текущие трансляции Локомотива.",
+        "Нажми кнопку ниже и бот найдет текущие трансляции Локомотива.\n\n"
+        "Вы можете найти трансляции и других команд. Для этого введите название команды и отправьте его в бота. "
+        "Если не получается найти на русском, попробуйте ввести название команды на английском.",
         reply_markup=LOKO_BUTTON,
     )
 
