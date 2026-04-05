@@ -356,6 +356,7 @@ def format_by_source(label, data):
             for item in s["browser"][:3]:
                 lines.append(f'• <a href="{item["url"]}">Stream</a>')
         lines.append("")
+    lines.append("\n<b>Чтобы открыть Ace Stream трансляцию, нажмите на её ID в сообщении (оно скопируется), потом откройте Ace Stream и вставьте ID там.</b>")
     return "\n".join(lines).strip()
 
 # ── handlers ──────────────────────────────────────────────────────────────────
