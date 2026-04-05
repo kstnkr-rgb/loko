@@ -111,6 +111,18 @@ def scrape_livetv(team):
                         seen_browser.add(src)
                         result["browser"].append({"title": title, "url": src})
 
+                # browser: <a> tags with webplayer/cdn stream links
+                for a in soup2.find_all("a", href=True):
+                    href = a["href"].strip()
+                    if href.startswith("//"):
+                        href = "https:" + href
+                    if (href.startswith("http")
+                            and any(x in href for x in ["webplayer", "player.php", "embed.php", "stream.php", "/play/", "/embed/", ".m3u8"])
+                            and "getbanner" not in href and "//ads." not in href
+                            and href not in seen_browser):
+                        seen_browser.add(href)
+                        result["browser"].append({"title": title, "url": href})
+
                 # browser: player URLs in raw text
                 for m in STREAM_URL_RE.finditer(r2.text):
                     u = m.group(1).rstrip("',;\"\\")
