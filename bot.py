@@ -362,11 +362,9 @@ def format_by_source(label, data):
             lines.append("На данном ресурсе трансляция не найдена")
         else:
             for item in s["ace"][:6]:
-                lines.append(f"• <code>acestream://{item['hash']}</code>")
-                if item.get("title"):
-                    lines[-1] += f" <i>({item['title'][:40]})</i>"
+                lines.append(f"<code>acestream://{item['hash']}</code>")
             for item in s["browser"][:3]:
-                lines.append(f'• <a href="{item["url"]}">Stream</a>')
+                lines.append(f'<a href="{item["url"]}">Stream</a>')
         lines.append("")
     lines.append("\n<b>Чтобы открыть Ace Stream трансляцию, нажмите на её ID в сообщении (оно скопируется), потом откройте Ace Stream и вставьте ID там.</b>")
     return "\n".join(lines).strip()
