@@ -1,3 +1,10 @@
+# Telegram-бот для поиска трансляций матчей.
+# Источники: livetv.sx (eventinfo-страницы), rplnews.online.
+# Два типа ссылок:
+#   - браузерные стримы (webplayer, iframe, CDN)
+#   - acestream (хэш копируется и вставляется в Ace Stream плеер)
+# Примечание: acestream:// не поддерживается как кликабельная ссылка в Telegram Bot API.
+
 import os, re, logging, asyncio
 import requests
 from bs4 import BeautifulSoup
